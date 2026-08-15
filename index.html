@@ -122,36 +122,7 @@
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-    // Implémentation du Gyroscope
-    class MobileGyroControls {
-      constructor(camera) {
-        this.camera = camera;
-        this.enabled = true;
-        this.deviceOrientation = {};
-
-        const onDeviceOrientationChangeEvent = (event) => {
-          this.deviceOrientation = event;
-        };
-
-        window.addEventListener('deviceorientation', onDeviceOrientationChangeEvent, false);
-
-        this.update = () => {
-          if (this.enabled === false) return;
-          const alpha = this.deviceOrientation.alpha ? THREE.MathUtils.degToRad(this.deviceOrientation.alpha) : 0;
-          const beta = this.deviceOrientation.beta ? THREE.MathUtils.degToRad(this.deviceOrientation.beta) : 0;
-          const gamma = this.deviceOrientation.gamma ? THREE.MathUtils.degToRad(this.deviceOrientation.gamma) : 0;
-
-          const euler = new THREE.Euler(beta, alpha, -gamma, 'YXZ');
-          this.camera.quaternion.setFromEuler(euler);
-        };
-
-        this.dispose = () => {
-          window.removeEventListener('deviceorientation', onDeviceOrientationChangeEvent, false);
-        };
-      }
-    }
-
-    // 1. Scene setup
+    // 1. Initialisation de la Scène
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -162,51 +133,88 @@
 
     camera.position.set(0, 80, 160);
 
-    // 2. Controls
-    let controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
+    // 2. Contrôles tactiles (OrbitControls)
+    let orbitControls = new OrbitControls(camera, renderer.domElement);
+    orbitControls.enableDamping = true;
+    orbitControls.dampingFactor = 0.05;
 
-    function enableGyro() {
-      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission()
-          .then(permissionState => {
-            if (permissionState === 'granted') {
-              activateGyroControls();
-            }
-          })
-          .catch(console.error);
-      } else {
-        activateGyroControls();
-      }
+    // 3. Contrôle du Gyroscope
+    let gyroActive = false;
+    let deviceAlpha = 0, deviceBeta = 0, deviceGamma = 0;
+
+    function onDeviceOrientation(event) {
+      if (!gyroActive) return;
+      deviceAlpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
+      deviceBeta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
+      deviceGamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
     }
 
-    function activateGyroControls() {
-      if (controls) controls.dispose();
-      controls = new MobileGyroControls(camera);
-      const btn = document.getElementById('btn-gyro');
-      if (btn) btn.style.display = 'none';
+    function updateGyroCamera() {
+      if (!gyroActive) return;
+      
+      // Pivot autour du centre sans perdre le système solaire
+      const radius = 180;
+      const x = radius * Math.sin(deviceAlpha) * Math.cos(deviceBeta);
+      const z = radius * Math.cos(deviceAlpha) * Math.cos(deviceBeta);
+      const y = radius * Math.sin(deviceBeta);
+
+      camera.position.set(x, y + 40, z);
+      camera.lookAt(0, 0, 0);
     }
 
     const gyroBtn = document.getElementById('btn-gyro');
-    if (gyroBtn) {
-      gyroBtn.addEventListener('click', enableGyro);
+
+    function toggleGyro() {
+      if (!gyroActive) {
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+          DeviceOrientationEvent.requestPermission()
+            .then(state => {
+              if (state === 'granted') startGyro();
+            })
+            .catch(console.error);
+        } else {
+          startGyro();
+        }
+      } else {
+        stopGyro();
+      }
     }
 
-    // 3. Lighting
+    function startGyro() {
+      gyroActive = true;
+      orbitControls.enabled = false;
+      window.addEventListener('deviceorientation', onDeviceOrientation, false);
+      gyroBtn.innerText = "Désactiver le Gyroscope";
+      gyroBtn.style.background = "#ff4d4d";
+    }
+
+    function stopGyro() {
+      gyroActive = false;
+      window.removeEventListener('deviceorientation', onDeviceOrientation, false);
+      orbitControls.enabled = true;
+      camera.position.set(0, 80, 160);
+      camera.lookAt(0, 0, 0);
+      orbitControls.update();
+      gyroBtn.innerText = "Activer le Gyroscope";
+      gyroBtn.style.background = "#4da6ff";
+    }
+
+    gyroBtn.addEventListener('click', toggleGyro);
+
+    // 4. Éclairage
     const ambientLight = new THREE.AmbientLight(0x404040);
     scene.add(ambientLight);
 
     const sunLight = new THREE.PointLight(0xffffff, 2, 2000);
     scene.add(sunLight);
 
-    // 4. Soleil
+    // 5. Soleil
     const sunGeo = new THREE.SphereGeometry(4, 32, 32);
     const sunMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
     const sunMesh = new THREE.Mesh(sunGeo, sunMat);
     scene.add(sunMesh);
 
-    // 5. Configuration des Planètes
+    // 6. Configuration des Planètes
     const SCALE_AU = 18;
     const segments = 128;
 
@@ -235,13 +243,11 @@
       return new THREE.Line(geo, mat);
     }
 
-    // Initialisation avec placement immédiat sur l'orbite
     planetData.forEach((data, index) => {
       const geo = new THREE.SphereGeometry(data.radius, 32, 32);
       const mat = new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.5 });
       const mesh = new THREE.Mesh(geo, mat);
 
-      // Placement par défaut décalé pour éviter l'empilement initial au centre (0,0,0)
       const initialAngle = (index / planetData.length) * Math.PI * 2;
       const initialDist = data.distAU * SCALE_AU;
       mesh.position.set(Math.cos(initialAngle) * initialDist, 0, Math.sin(initialAngle) * initialDist);
@@ -278,7 +284,7 @@
     const moonOrbit = createOrbitLine(2.5, 0xffffff);
     scene.add(moonOrbit);
 
-    // 6. Mise à jour des positions
+    // 7. Mises à jour des objets et de l'UI
     function updatePositions() {
       const now = new Date();
       
@@ -289,7 +295,6 @@
 
       Object.keys(planets).forEach(id => {
         const p = planets[id];
-        
         if (hasAstronomy) {
           try {
             const vec = Astronomy.HelioVector(p.astronomyName, now);
@@ -352,7 +357,6 @@
       );
     }
 
-    // 7. Mise à jour des Étiquettes 2D
     function updateLabelPosition(mesh, labelId) {
       const label = document.getElementById(labelId);
       if (!label || !mesh) return;
@@ -384,11 +388,17 @@
       });
     }
 
-    // 8. Animation
+    // 8. Boucle d'animation
     function animate() {
       requestAnimationFrame(animate);
       updatePositions();
-      if (controls) controls.update();
+      
+      if (gyroActive) {
+        updateGyroCamera();
+      } else if (orbitControls) {
+        orbitControls.update();
+      }
+
       updateAllLabels();
       renderer.render(scene, camera);
     }
@@ -399,7 +409,6 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Démarrage
     updatePositions();
     animate();
   </script>
