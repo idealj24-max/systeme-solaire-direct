@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Système Solaire & Lune en Temps Réel</title>
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+    #ui {
+      position: absolute; top: 15px; left: 15px; color: #fff;
+      background: rgba(0, 0, 0, 0.7); padding: 12px 18px; border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2); pointer-events: none;
+    }
+    #ui h1 { margin: 0 0 5px 0; font-size: 1.1rem; color: #4da6ff; }
+    #ui p { margin: 3px 0; font-size: 0.85rem; }
+  </style>
+
+  <!-- Importation de Three.js & Astronomy Engine -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.min.js"></script>
+</head>
+<body>
+
+  <div id="ui">
+    <h1>🪐 Suivi Temps Réel</h1>
+    <p><b>Temps UTC :</b> <span id="time-display">--</span></p>
+    <p><b>Phase de la Lune :</b> <span id="moon-phase">--</span></p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
