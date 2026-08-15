@@ -121,7 +121,35 @@
   <script type="module">
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-    import { DeviceOrientationControls } from 'three/addons/controls/DeviceOrientationControls.js';
+
+    // Implémentation du Gyroscope
+    class MobileGyroControls {
+      constructor(camera) {
+        this.camera = camera;
+        this.enabled = true;
+        this.deviceOrientation = {};
+
+        const onDeviceOrientationChangeEvent = (event) => {
+          this.deviceOrientation = event;
+        };
+
+        window.addEventListener('deviceorientation', onDeviceOrientationChangeEvent, false);
+
+        this.update = () => {
+          if (this.enabled === false) return;
+          const alpha = this.deviceOrientation.alpha ? THREE.MathUtils.degToRad(this.deviceOrientation.alpha) : 0;
+          const beta = this.deviceOrientation.beta ? THREE.MathUtils.degToRad(this.deviceOrientation.beta) : 0;
+          const gamma = this.deviceOrientation.gamma ? THREE.MathUtils.degToRad(this.deviceOrientation.gamma) : 0;
+
+          const euler = new THREE.Euler(beta, alpha, -gamma, 'YXZ');
+          this.camera.quaternion.setFromEuler(euler);
+        };
+
+        this.dispose = () => {
+          window.removeEventListener('deviceorientation', onDeviceOrientationChangeEvent, false);
+        };
+      }
+    }
 
     // 1. Initialisation de la scène
     const scene = new THREE.Scene();
@@ -155,7 +183,7 @@
 
     function activateGyroControls() {
       if (controls) controls.dispose();
-      controls = new DeviceOrientationControls(camera);
+      controls = new MobileGyroControls(camera);
       const btn = document.getElementById('btn-gyro');
       if (btn) btn.style.display = 'none';
     }
