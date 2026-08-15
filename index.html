@@ -52,5 +52,25 @@
       });
     }
   </script>
+  <!-- Étiquettes pour les planètes -->
+<div id="labels">
+  <div id="label-sun" class="planet-label">Soleil</div>
+  <div id="label-earth" class="planet-label">Terre</div>
+  <div id="label-moon" class="planet-label">Lune</div>
+</div>
+
+<style>
+  .planet-label {
+    position: absolute;
+    color: white;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none; /* Important pour ne pas bloquer les clics */
+    white-space: nowrap;
+  }
+</style>
+
 </body>
 </html>
