@@ -121,7 +121,7 @@ function updatePositions() {
   if (moonPhaseDisplay) moonPhaseDisplay.innerText = `${Math.round(phase)}°`;
 }
 
-// 7. Mise à jour des Étiquettes 2D
+// 7. Déclaration de la fonction de mise à jour des Étiquettes 2D
 function updateLabelPosition(mesh, labelId) {
   const label = document.getElementById(labelId);
   if (!label) return;
@@ -142,51 +142,31 @@ function updateLabelPosition(mesh, labelId) {
   }
 }
 
-// 8. Boucle d'Animation
+// 8. Boucle d'Animation (Exécutée en continu à 60 FPS)
 function animate() {
   requestAnimationFrame(animate);
   
+  // 1. Mettre à jour les coordonnées réelles des objets
   updatePositions();
+
+  // 2. Mettre à jour la caméra (gyroscope ou souris)
   if (controls) controls.update();
   
+  // 3. Appeler la mise à jour des étiquettes à chaque image
   updateLabelPosition(sunMesh, 'label-sun');
   updateLabelPosition(earthMesh, 'label-earth');
   updateLabelPosition(moonMesh, 'label-moon');
   
+  // 4. Rendu de la scène 3D
   renderer.render(scene, camera);
-  // Fonction pour projeter un objet 3D vers l'écran 2D
-function updateLabelPosition(mesh, labelId) {
-  const vector = new THREE.Vector3();
-  
-  // Obtenir la position mondiale de l'objet
-  mesh.getWorldPosition(vector);
-  
-  // Projeter la position 3D vers la caméra
-  vector.project(camera);
-
-  // Convertir en coordonnées d'écran
-  const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-  const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
-
-  const label = document.getElementById(labelId);
-  
-  // Vérifier si la planète est devant la caméra pour l'afficher
-  if (vector.z < 1) {
-    label.style.display = 'block';
-    label.style.left = `${x}px`;
-    label.style.top = `${y}px`;
-  } else {
-    label.style.display = 'none';
-  }
 }
 
-}
-
-// Redimensionnement
+// 9. Gestion du Redimensionnement
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// Lancement de l'application
 animate();
