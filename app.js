@@ -7,18 +7,46 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
-const controls = new THREE.OrbitControls(camera, renderer.domElement);
 camera.position.set(0, 20, 35);
+
+// 2. Gestion des Contrôles (OrbitControls + Gyroscope)
+let controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.update();
 
-// 2. Éclairage (Le Soleil éclaire la scène)
+function enableGyro() {
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission()
+      .then(permissionState => {
+        if (permissionState === 'granted') {
+          activateGyroControls();
+        }
+      })
+      .catch(console.error);
+  } else {
+    activateGyroControls();
+  }
+}
+
+function activateGyroControls() {
+  if (controls) controls.dispose();
+  controls = new THREE.DeviceOrientationControls(camera);
+  const btn = document.getElementById('btn-gyro');
+  if (btn) btn.style.display = 'none';
+}
+
+const gyroBtn = document.getElementById('btn-gyro');
+if (gyroBtn) {
+  gyroBtn.addEventListener('click', enableGyro);
+}
+
+// 3. Éclairage
 const ambientLight = new THREE.AmbientLight(0x333333);
 scene.add(ambientLight);
 
 const sunLight = new THREE.PointLight(0xffffff, 2, 500);
 scene.add(sunLight);
 
-// 3. Création des corps célestes (Échelles simplifiées pour le visuel)
+// 4. Corps Célestes
 // Soleil
 const sunGeo = new THREE.SphereGeometry(3, 32, 32);
 const sunMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
@@ -37,42 +65,98 @@ const moonMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.8
 const moonMesh = new THREE.Mesh(moonGeo, moonMat);
 scene.add(moonMesh);
 
-// 4. Mettre à jour les positions astronomiques exactes
+// 5. Tracé des Orbites
+const segments = 128;
+
+// Orbite Terre
+const earthOrbitRadius = 15;
+const earthOrbitGeo = new THREE.BufferGeometry();
+const earthOrbitPos = [];
+for (let i = 0; i <= segments; i++) {
+  const theta = (i / segments) * Math.PI * 2;
+  earthOrbitPos.push(Math.cos(theta) * earthOrbitRadius, 0, Math.sin(theta) * earthOrbitRadius);
+}
+earthOrbitGeo.setAttribute('position', new THREE.Float32BufferAttribute(earthOrbitPos, 3));
+const earthOrbitMat = new THREE.LineBasicMaterial({ color: 0x4da6ff, transparent: true, opacity: 0.4 });
+const earthOrbit = new THREE.Line(earthOrbitGeo, earthOrbitMat);
+scene.add(earthOrbit);
+
+// Orbite Lune
+const moonOrbitRadius = 2.5;
+const moonOrbitGeo = new THREE.BufferGeometry();
+const moonOrbitPos = [];
+for (let i = 0; i <= segments; i++) {
+  const theta = (i / segments) * Math.PI * 2;
+  moonOrbitPos.push(Math.cos(theta) * moonOrbitRadius, 0, Math.sin(theta) * moonOrbitRadius);
+}
+moonOrbitGeo.setAttribute('position', new THREE.Float32BufferAttribute(moonOrbitPos, 3));
+const moonOrbitMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+const moonOrbit = new THREE.Line(moonOrbitGeo, moonOrbitMat);
+scene.add(moonOrbit);
+
+// 6. Positions Astronomiques
 function updatePositions() {
   const now = new Date();
-  document.getElementById('time-display').innerText = now.toUTCString();
+  const timeDisplay = document.getElementById('time-display');
+  if (timeDisplay) timeDisplay.innerText = now.toUTCString();
 
-  // Position géocentrique de la Lune (depuis la Terre)
   const moonVec = Astronomy.GeoVector('Moon', now, true);
-  // Position héliocentrique de la Terre (depuis le Soleil)
   const earthVec = Astronomy.HelioVector('Earth', now);
 
-  // Échelle visuelle (1 UA = 15 unités 3D)
   const scaleEarth = 15;
   earthMesh.position.set(earthVec.x * scaleEarth, earthVec.z * scaleEarth, earthVec.y * scaleEarth);
 
-  // Position de la Lune relative à la Terre
-  const scaleMoon = 0.00001; // Ajustement d'échelle pour visibilité
+  const scaleMoon = 0.00001;
   moonMesh.position.set(
     earthMesh.position.x + (moonVec.x * scaleMoon),
     earthMesh.position.y + (moonVec.z * scaleMoon),
     earthMesh.position.z + (moonVec.y * scaleMoon)
   );
 
-  // Calcul de la phase lunaire
+  // L'orbite de la Lune suit la Terre
+  moonOrbit.position.copy(earthMesh.position);
+
   const phase = Astronomy.MoonPhase(now);
-  document.getElementById('moon-phase').innerText = `${Math.round(phase)}°`;
+  const moonPhaseDisplay = document.getElementById('moon-phase');
+  if (moonPhaseDisplay) moonPhaseDisplay.innerText = `${Math.round(phase)}°`;
 }
 
-// 5. Boucle de rendu 3D
+// 7. Mise à jour des Étiquettes 2D
+function updateLabelPosition(mesh, labelId) {
+  const label = document.getElementById(labelId);
+  if (!label) return;
+
+  const vector = new THREE.Vector3();
+  mesh.getWorldPosition(vector);
+  vector.project(camera);
+
+  const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+  const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+
+  if (vector.z < 1) {
+    label.style.display = 'block';
+    label.style.left = `${x}px`;
+    label.style.top = `${y}px`;
+  } else {
+    label.style.display = 'none';
+  }
+}
+
+// 8. Boucle d'Animation
 function animate() {
   requestAnimationFrame(animate);
+  
   updatePositions();
-  controls.update();
+  if (controls) controls.update();
+  
+  updateLabelPosition(sunMesh, 'label-sun');
+  updateLabelPosition(earthMesh, 'label-earth');
+  updateLabelPosition(moonMesh, 'label-moon');
+  
   renderer.render(scene, camera);
 }
 
-// Redimensionnement de la fenêtre
+// Redimensionnement
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
