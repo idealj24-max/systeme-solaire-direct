@@ -154,6 +154,32 @@ function animate() {
   updateLabelPosition(moonMesh, 'label-moon');
   
   renderer.render(scene, camera);
+  // Fonction pour projeter un objet 3D vers l'écran 2D
+function updateLabelPosition(mesh, labelId) {
+  const vector = new THREE.Vector3();
+  
+  // Obtenir la position mondiale de l'objet
+  mesh.getWorldPosition(vector);
+  
+  // Projeter la position 3D vers la caméra
+  vector.project(camera);
+
+  // Convertir en coordonnées d'écran
+  const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+  const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+
+  const label = document.getElementById(labelId);
+  
+  // Vérifier si la planète est devant la caméra pour l'afficher
+  if (vector.z < 1) {
+    label.style.display = 'block';
+    label.style.left = `${x}px`;
+    label.style.top = `${y}px`;
+  } else {
+    label.style.display = 'none';
+  }
+}
+
 }
 
 // Redimensionnement
