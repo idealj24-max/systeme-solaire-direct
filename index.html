@@ -1,428 +1,338 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Système-Solaire-Direct</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Système Solaire Direct</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+        body {
+            overflow: hidden;
+            background-color: #000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        /* Panneau d'informations */
+        .info-panel {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            max-width: 380px;
+            background: rgba(10, 10, 15, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            padding: 12px 16px;
+            color: #fff;
+            z-index: 10;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .info-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #4da6ff;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .info-text {
+            font-size: 13px;
+            color: #ddd;
+            line-height: 1.4;
+        }
 
-  <!-- Configuration PWA -->
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#000000">
-  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1146/1146303.png">
+        /* Étiquettes 2D fluides et anti-chevauchement */
+        .planet-label {
+            position: absolute;
+            background: rgba(15, 15, 25, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 500;
+            pointer-events: none;
+            white-space: nowrap;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            transform: translate(-50%, -100%);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .planet-label.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
 
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background-color: #000;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      user-select: none;
-    }
+        /* Bouton Gyroscope */
+        .controls-bar {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+        }
+        .btn-gyro {
+            background: #3b82f6;
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
+            transition: background 0.2s, transform 0.1s;
+        }
+        .btn-gyro.active {
+            background: #ef4444;
+            box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+        }
+        .btn-gyro:active {
+            transform: scale(0.96);
+        }
+    </style>
 
-    /* Panneau d'informations UI */
-    #ui {
-      position: absolute;
-      top: 15px;
-      left: 15px;
-      color: #fff;
-      background: rgba(0, 0, 0, 0.75);
-      padding: 12px 18px;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      pointer-events: none;
-      z-index: 5;
-    }
-    #ui h1 {
-      margin: 0 0 5px 0;
-      font-size: 1.1rem;
-      color: #4da6ff;
-    }
-    #ui p {
-      margin: 3px 0;
-      font-size: 0.85rem;
-    }
-
-    /* Bouton Gyroscope */
-    #btn-gyro {
-      position: absolute;
-      bottom: 20px;
-      left: 20px;
-      z-index: 10;
-      padding: 10px 18px;
-      background: #4da6ff;
-      border: none;
-      border-radius: 6px;
-      color: #fff;
-      font-weight: bold;
-      font-size: 0.9rem;
-      cursor: pointer;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
-    }
-    #btn-gyro:active {
-      background: #3385d6;
-    }
-
-    /* Étiquettes des planètes */
-    .planet-label {
-      position: absolute;
-      color: #ffffff;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-size: 11px;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      pointer-events: none;
-      white-space: nowrap;
-      transform: translate(-50%, -100%);
-      display: none;
-      z-index: 2;
-    }
-  </style>
-
-  <!-- Import Map ESM pour Three.js -->
-  <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
-      }
-    }
-  </script>
-  <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.min.js"></script>
+    <!-- Inclusion de Three.js et OrbitControls via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
 
-  <!-- Interface Utilisateur -->
-  <div id="ui">
-    <h1>🪐 Système-Solaire-Direct</h1>
-    <p><b>Temps UTC :</b> <span id="time-display">--</span></p>
-    <p><b>Phase de la Lune :</b> <span id="moon-phase">--</span></p>
-  </div>
+    <div class="info-panel">
+        <div class="info-title">🪐 Système-Solaire-Direct</div>
+        <div class="info-text"><b>Temps UTC :</b> <span id="utc-time">--</span></div>
+        <div class="info-text"><b>Phase de la Lune :</b> Calcul approximatif</div>
+    </div>
 
-  <!-- Bouton Gyroscope -->
-  <button id="btn-gyro">Activer le Gyroscope</button>
+    <div id="labels-container"></div>
+    <div id="canvas-container"></div>
 
-  <!-- Étiquettes 2D -->
-  <div id="labels">
-    <div id="label-sun" class="planet-label">☀️ Soleil</div>
-    <div id="label-mercury" class="planet-label">☿ Mercure</div>
-    <div id="label-venus" class="planet-label">♀️ Vénus</div>
-    <div id="label-earth" class="planet-label">🌍 Terre</div>
-    <div id="label-moon" class="planet-label">🌙 Lune</div>
-    <div id="label-mars" class="planet-label">♂️ Mars</div>
-    <div id="label-jupiter" class="planet-label">♃ Jupiter</div>
-    <div id="label-saturn" class="planet-label">♄ Saturne</div>
-    <div id="label-uranus" class="planet-label">⛢ Uranus</div>
-    <div id="label-neptune" class="planet-label">♆ Neptune</div>
-  </div>
+    <div class="controls-bar">
+        <button id="gyro-btn" class="btn-gyro">Activer le Gyroscope</button>
+    </div>
 
-  <!-- Application Web3D -->
-  <script type="module">
-    import * as THREE from 'three';
-    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-
-    // 1. Initialisation de la Scène
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    document.body.appendChild(renderer.domElement);
-
-    camera.position.set(0, 80, 160);
-
-    // 2. Contrôles tactiles (OrbitControls)
-    let orbitControls = new OrbitControls(camera, renderer.domElement);
-    orbitControls.enableDamping = true;
-    orbitControls.dampingFactor = 0.05;
-
-    // 3. Contrôle du Gyroscope
-    let gyroActive = false;
-    let deviceAlpha = 0, deviceBeta = 0, deviceGamma = 0;
-
-    function onDeviceOrientation(event) {
-      if (!gyroActive) return;
-      deviceAlpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
-      deviceBeta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
-      deviceGamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
-    }
-
-    function updateGyroCamera() {
-      if (!gyroActive) return;
-      
-      // Pivot autour du centre sans perdre le système solaire
-      const radius = 180;
-      const x = radius * Math.sin(deviceAlpha) * Math.cos(deviceBeta);
-      const z = radius * Math.cos(deviceAlpha) * Math.cos(deviceBeta);
-      const y = radius * Math.sin(deviceBeta);
-
-      camera.position.set(x, y + 40, z);
-      camera.lookAt(0, 0, 0);
-    }
-
-    const gyroBtn = document.getElementById('btn-gyro');
-
-    function toggleGyro() {
-      if (!gyroActive) {
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-          DeviceOrientationEvent.requestPermission()
-            .then(state => {
-              if (state === 'granted') startGyro();
-            })
-            .catch(console.error);
-        } else {
-          startGyro();
+    <script>
+        // --- 1. HORLOGE UTC ---
+        function updateUTC() {
+            const now = new Date();
+            document.getElementById('utc-time').textContent = now.toUTCString();
         }
-      } else {
-        stopGyro();
-      }
-    }
+        setInterval(updateUTC, 1000);
+        updateUTC();
 
-    function startGyro() {
-      gyroActive = true;
-      orbitControls.enabled = false;
-      window.addEventListener('deviceorientation', onDeviceOrientation, false);
-      gyroBtn.innerText = "Désactiver le Gyroscope";
-      gyroBtn.style.background = "#ff4d4d";
-    }
+        // --- 2. INITIALISATION THREE.JS ---
+        const container = document.getElementById('canvas-container');
+        const labelsContainer = document.getElementById('labels-container');
 
-    function stopGyro() {
-      gyroActive = false;
-      window.removeEventListener('deviceorientation', onDeviceOrientation, false);
-      orbitControls.enabled = true;
-      camera.position.set(0, 80, 160);
-      camera.lookAt(0, 0, 0);
-      orbitControls.update();
-      gyroBtn.innerText = "Activer le Gyroscope";
-      gyroBtn.style.background = "#4da6ff";
-    }
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 45, 70);
 
-    gyroBtn.addEventListener('click', toggleGyro);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
 
-    // 4. Éclairage
-    const ambientLight = new THREE.AmbientLight(0x404040);
-    scene.add(ambientLight);
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxDistance = 300;
 
-    const sunLight = new THREE.PointLight(0xffffff, 2, 2000);
-    scene.add(sunLight);
+        // Lumière Soleil (Ponctuelle + Ambiante)
+        const sunLight = new THREE.PointLight(0xffffff, 2, 500);
+        scene.add(sunLight);
+        scene.add(new THREE.AmbientLight(0x333333));
 
-    // 5. Soleil
-    const sunGeo = new THREE.SphereGeometry(4, 32, 32);
-    const sunMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
-    const sunMesh = new THREE.Mesh(sunGeo, sunMat);
-    scene.add(sunMesh);
+        // --- 3. CRÉATION DES PLANÈTES ---
+        const planetsData = [
+            { name: "Soleil", color: 0xffcc00, size: 3.5, dist: 0, speed: 0 },
+            { name: "Mercure", color: 0xaaaaaa, size: 0.5, dist: 7, speed: 0.04 },
+            { name: "Vénus", color: 0xe3bb76, size: 0.8, dist: 10, speed: 0.015 },
+            { name: "Terre", color: 0x2b82c5, size: 0.9, dist: 14, speed: 0.01 },
+            { name: "Lune", color: 0xcccccc, size: 0.3, dist: 2.2, speed: 0.05, parent: "Terre" },
+            { name: "Mars", color: 0xc1440e, size: 0.7, dist: 19, speed: 0.008 },
+            { name: "Jupiter", color: 0xb07f35, size: 2.2, dist: 27, speed: 0.002 },
+            { name: "Saturne", color: 0xe2bf7d, size: 1.8, dist: 36, speed: 0.0009, ring: true },
+            { name: "Uranus", color: 0x4b70dd, size: 1.2, dist: 45, speed: 0.0004 },
+            { name: "Neptune", color: 0x274687, size: 1.1, dist: 53, speed: 0.0001 }
+        ];
 
-    // 6. Configuration des Planètes
-    const SCALE_AU = 18;
-    const segments = 128;
+        const planets = [];
 
-    const planetData = [
-      { id: 'mercury', name: 'Mercury', radius: 0.6, color: 0xaaaaaa, distAU: 0.39, speed: 4.1 },
-      { id: 'venus',   name: 'Venus',   radius: 0.9, color: 0xe3bb76, distAU: 0.72, speed: 1.6 },
-      { id: 'earth',   name: 'Earth',   radius: 1.0, color: 0x2233ff, distAU: 1.00, speed: 1.0 },
-      { id: 'mars',    name: 'Mars',    radius: 0.7, color: 0xc1440e, distAU: 1.52, speed: 0.53 },
-      { id: 'jupiter', name: 'Jupiter', radius: 2.4, color: 0xb07f35, distAU: 2.80, speed: 0.08 },
-      { id: 'saturn',  name: 'Saturn',  radius: 1.9, color: 0xd2b48c, distAU: 4.20, speed: 0.03 },
-      { id: 'uranus',  name: 'Uranus',  radius: 1.5, color: 0x7df9ff, distAU: 5.60, speed: 0.01 },
-      { id: 'neptune', name: 'Neptune', radius: 1.5, color: 0x4b70dd, distAU: 7.00, speed: 0.006 }
-    ];
+        planetsData.forEach(data => {
+            const geometry = new THREE.SphereGeometry(data.size, 32, 32);
+            let material;
 
-    const planets = {};
+            if (data.name === "Soleil") {
+                material = new THREE.MeshBasicMaterial({ color: data.color });
+            } else {
+                material = new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.8 });
+            }
 
-    function createOrbitLine(radius, color) {
-      const geo = new THREE.BufferGeometry();
-      const pos = [];
-      for (let i = 0; i <= segments; i++) {
-        const theta = (i / segments) * Math.PI * 2;
-        pos.push(Math.cos(theta) * radius, 0, Math.sin(theta) * radius);
-      }
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      const mat = new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.3 });
-      return new THREE.Line(geo, mat);
-    }
+            const mesh = new THREE.Mesh(geometry, material);
 
-    planetData.forEach((data, index) => {
-      const geo = new THREE.SphereGeometry(data.radius, 32, 32);
-      const mat = new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.5 });
-      const mesh = new THREE.Mesh(geo, mat);
+            // Orbite visuelle
+            if (data.dist > 0 && !data.parent) {
+                const orbitGeo = new THREE.BufferGeometry();
+                const points = [];
+                for (let i = 0; i <= 128; i++) {
+                    const theta = (i / 128) * Math.PI * 2;
+                    points.push(new THREE.Vector3(Math.cos(theta) * data.dist, 0, Math.sin(theta) * data.dist));
+                }
+                orbitGeo.setFromPoints(points);
+                const orbitMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.1 });
+                scene.add(new THREE.Line(orbitGeo, orbitMat));
+            }
 
-      const initialAngle = (index / planetData.length) * Math.PI * 2;
-      const initialDist = data.distAU * SCALE_AU;
-      mesh.position.set(Math.cos(initialAngle) * initialDist, 0, Math.sin(initialAngle) * initialDist);
+            // Anneaux de Saturne
+            if (data.ring) {
+                const ringGeo = new THREE.RingGeometry(data.size + 0.5, data.size + 1.8, 32);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0xa68c6d, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+                const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+                ringMesh.rotation.x = Math.PI / 2;
+                mesh.add(ringMesh);
+            }
 
-      scene.add(mesh);
+            // Création de l'étiquette HTML
+            const label = document.createElement('div');
+            label.className = 'planet-label';
+            label.textContent = data.name;
+            labelsContainer.appendChild(label);
 
-      const orbit = createOrbitLine(initialDist, data.color);
-      scene.add(orbit);
+            scene.add(mesh);
 
-      planets[data.id] = {
-        astronomyName: data.name,
-        mesh: mesh,
-        distAU: data.distAU,
-        speed: data.speed,
-        angle: initialAngle
-      };
-    });
+            planets.push({
+                ...data,
+                mesh: mesh,
+                label: label,
+                angle: Math.random() * Math.PI * 2
+            });
+        });
 
-    // Anneaux de Saturne
-    if (planets.saturn) {
-      const ringGeo = new THREE.RingGeometry(2.5, 4.0, 32);
-      const ringMat = new THREE.MeshBasicMaterial({ color: 0xead6b8, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
-      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-      ringMesh.rotation.x = Math.PI / 2;
-      planets.saturn.mesh.add(ringMesh);
-    }
+        // --- 4. GESTION DES COLLISION ET AFFICHAGE DES ÉTIQUETTES ---
+        function updateLabels() {
+            const tempV = new THREE.Vector3();
+            const positions = [];
 
-    // Lune
-    const moonGeo = new THREE.SphereGeometry(0.3, 32, 32);
-    const moonMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.8 });
-    const moonMesh = new THREE.Mesh(moonGeo, moonMat);
-    scene.add(moonMesh);
+            planets.forEach(p => {
+                p.mesh.getWorldPosition(tempV);
 
-    const moonOrbit = createOrbitLine(2.5, 0xffffff);
-    scene.add(moonOrbit);
+                // Masquer si la planète est derrière le soleil/caméra
+                const distanceToCam = camera.position.distanceTo(tempV);
+                tempV.project(camera);
 
-    // 7. Mises à jour des objets et de l'UI
-    function updatePositions() {
-      const now = new Date();
-      
-      const timeDisplay = document.getElementById('time-display');
-      if (timeDisplay) timeDisplay.innerText = now.toUTCString();
+                const isBehind = tempV.z > 1;
+                const x = (tempV.x *  .5 + .5) * window.innerWidth;
+                const y = (tempV.y * -.5 + .5) * window.innerHeight;
 
-      const hasAstronomy = typeof Astronomy !== 'undefined';
+                // Hors écran ou derrière
+                if (isBehind || x < 0 || x > window.innerWidth || y < 0 || y > window.innerHeight) {
+                    p.label.classList.add('hidden');
+                    return;
+                }
 
-      Object.keys(planets).forEach(id => {
-        const p = planets[id];
-        if (hasAstronomy) {
-          try {
-            const vec = Astronomy.HelioVector(p.astronomyName, now);
-            p.mesh.position.set(vec.x * SCALE_AU, vec.z * SCALE_AU, vec.y * SCALE_AU);
-          } catch(e) {
-            fallbackPosition(p);
-          }
-        } else {
-          fallbackPosition(p);
+                // Détection de chevauchement (Anti-collision)
+                let isOverlapping = false;
+                for (let pos of positions) {
+                    const dist2D = Math.hypot(pos.x - x, pos.y - y);
+                    if (dist2D < 35) { // Seuil de chevauchement en pixels
+                        isOverlapping = true;
+                        break;
+                    }
+                }
+
+                if (isOverlapping && p.name !== "Soleil") {
+                    p.label.classList.add('hidden');
+                } else {
+                    p.label.classList.remove('hidden');
+                    p.label.style.left = `${x}px`;
+                    p.label.style.top = `${y}px`;
+                    positions.push({ x, y, dist: distanceToCam });
+                }
+            });
         }
-      });
 
-      if (planets.earth) {
-        const earthMesh = planets.earth.mesh;
-        if (hasAstronomy) {
-          try {
-            const moonVec = Astronomy.GeoVector('Moon', now, true);
-            const scaleMoon = 0.000008;
-            moonMesh.position.set(
-              earthMesh.position.x + (moonVec.x * scaleMoon),
-              earthMesh.position.y + (moonVec.z * scaleMoon),
-              earthMesh.position.z + (moonVec.y * scaleMoon)
-            );
-          } catch(e) {
-            fallbackMoon(earthMesh);
-          }
-        } else {
-          fallbackMoon(earthMesh);
+        // --- 5. BOUCLE D'ANIMATION ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Mettre à jour les positions orbiatles
+            const terreObj = planets.find(p => p.name === "Terre");
+
+            planets.forEach(p => {
+                if (p.dist > 0) {
+                    p.angle += p.speed;
+                    if (p.parent === "Terre" && terreObj) {
+                        p.mesh.position.x = terreObj.mesh.position.x + Math.cos(p.angle) * p.dist;
+                        p.mesh.position.z = terreObj.mesh.position.z + Math.sin(p.angle) * p.dist;
+                    } else {
+                        p.mesh.position.x = Math.cos(p.angle) * p.dist;
+                        p.mesh.position.z = Math.sin(p.angle) * p.dist;
+                    }
+                }
+                p.mesh.rotation.y += 0.01;
+            });
+
+            controls.update();
+            updateLabels();
+            renderer.render(scene, camera);
         }
-        moonOrbit.position.copy(earthMesh.position);
-      }
+        animate();
 
-      const moonPhaseDisplay = document.getElementById('moon-phase');
-      if (moonPhaseDisplay) {
-        if (hasAstronomy) {
-          try {
-            const phase = Astronomy.MoonPhase(now);
-            moonPhaseDisplay.innerText = `${Math.round(phase)}°`;
-          } catch(e) {
-            moonPhaseDisplay.innerText = "Actif";
-          }
-        } else {
-          moonPhaseDisplay.innerText = "Calcul approximatif";
+        // --- 6. GYROSCOPE (Mobile) ---
+        const gyroBtn = document.getElementById('gyro-btn');
+        let gyroActive = false;
+
+        function handleOrientation(event) {
+            if (!gyroActive) return;
+            const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
+            const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
+            camera.rotation.x = beta * 0.2;
+            camera.rotation.y = alpha * 0.2;
         }
-      }
-    }
 
-    function fallbackPosition(p) {
-      p.angle += p.speed * 0.002;
-      const dist = p.distAU * SCALE_AU;
-      p.mesh.position.set(Math.cos(p.angle) * dist, 0, Math.sin(p.angle) * dist);
-    }
+        gyroBtn.addEventListener('click', () => {
+            if (!gyroActive) {
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    DeviceOrientationEvent.requestPermission().then(response => {
+                        if (response === 'granted') {
+                            window.addEventListener('deviceorientation', handleOrientation);
+                            setGyroState(true);
+                        }
+                    });
+                } else {
+                    window.addEventListener('deviceorientation', handleOrientation);
+                    setGyroState(true);
+                }
+            } else {
+                window.removeEventListener('deviceorientation', handleOrientation);
+                setGyroState(false);
+            }
+        });
 
-    function fallbackMoon(earthMesh) {
-      const t = Date.now() * 0.001;
-      moonMesh.position.set(
-        earthMesh.position.x + Math.cos(t) * 2.5,
-        earthMesh.position.y,
-        earthMesh.position.z + Math.sin(t) * 2.5
-      );
-    }
-
-    function updateLabelPosition(mesh, labelId) {
-      const label = document.getElementById(labelId);
-      if (!label || !mesh) return;
-
-      const vector = new THREE.Vector3();
-      mesh.getWorldPosition(vector);
-      vector.project(camera);
-
-      const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-      const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
-
-      if (vector.z < 1 && vector.z > -1) {
-        label.style.display = 'block';
-        label.style.left = `${x}px`;
-        label.style.top = `${y}px`;
-      } else {
-        label.style.display = 'none';
-      }
-    }
-
-    function updateAllLabels() {
-      updateLabelPosition(sunMesh, 'label-sun');
-      updateLabelPosition(moonMesh, 'label-moon');
-
-      Object.keys(planets).forEach(id => {
-        if (planets[id]) {
-          updateLabelPosition(planets[id].mesh, `label-${id}`);
+        function setGyroState(active) {
+            gyroActive = active;
+            gyroBtn.textContent = active ? "Désactiver le Gyroscope" : "Activer le Gyroscope";
+            gyroBtn.classList.toggle('active', active);
         }
-      });
-    }
 
-    // 8. Boucle d'animation
-    function animate() {
-      requestAnimationFrame(animate);
-      updatePositions();
-      
-      if (gyroActive) {
-        updateGyroCamera();
-      } else if (orbitControls) {
-        orbitControls.update();
-      }
-
-      updateAllLabels();
-      renderer.render(scene, camera);
-    }
-
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-
-    updatePositions();
-    animate();
-  </script>
-
-  <!-- Service Worker -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then((reg) => console.log('Service Worker OK', reg))
-          .catch((err) => console.error('Service Worker Erreur', err));
-      });
-    }
-  </script>
-
+        // --- 7. REDIMENSIONNEMENT FENÊTRE ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
 </body>
 </html>
