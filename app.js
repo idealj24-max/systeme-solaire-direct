@@ -1,17 +1,18 @@
 // 1. Initialisation de la scène Three.js
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
-camera.position.set(0, 30, 50);
+camera.position.set(0, 60, 110);
 
-// 2. Gestion des Contrôles (OrbitControls + Gyroscope)
+// 2. Contrôles (OrbitControls + Gyroscope)
 let controls = new THREE.OrbitControls(camera, renderer.domElement);
-controls.update();
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
 
 function enableGyro() {
   if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -43,50 +44,34 @@ if (gyroBtn) {
 const ambientLight = new THREE.AmbientLight(0x333333);
 scene.add(ambientLight);
 
-const sunLight = new THREE.PointLight(0xffffff, 2, 500);
+const sunLight = new THREE.PointLight(0xffffff, 2, 1000);
 scene.add(sunLight);
 
-// 4. Corps Célestes
-// Soleil
-const sunGeo = new THREE.SphereGeometry(3, 32, 32);
+// 4. Soleil
+const sunGeo = new THREE.SphereGeometry(3.5, 32, 32);
 const sunMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
 const sunMesh = new THREE.Mesh(sunGeo, sunMat);
 scene.add(sunMesh);
 
-// Vénus
-const venusGeo = new THREE.SphereGeometry(1.0, 32, 32);
-const venusMat = new THREE.MeshStandardMaterial({ color: 0xe3bb76, roughness: 0.5 });
-const venusMesh = new THREE.Mesh(venusGeo, venusMat);
-scene.add(venusMesh);
-
-// Terre
-const earthGeo = new THREE.SphereGeometry(1.2, 32, 32);
-const earthMat = new THREE.MeshStandardMaterial({ color: 0x2233ff, roughness: 0.6 });
-const earthMesh = new THREE.Mesh(earthGeo, earthMat);
-scene.add(earthMesh);
-
-// Lune
-const moonGeo = new THREE.SphereGeometry(0.4, 32, 32);
-const moonMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.8 });
-const moonMesh = new THREE.Mesh(moonGeo, moonMat);
-scene.add(moonMesh);
-
-// Mars
-const marsGeo = new THREE.SphereGeometry(0.8, 32, 32);
-const marsMat = new THREE.MeshStandardMaterial({ color: 0xc1440e, roughness: 0.7 });
-const marsMesh = new THREE.Mesh(marsGeo, marsMat);
-scene.add(marsMesh);
-
-// Jupiter
-const jupiterGeo = new THREE.SphereGeometry(2.5, 32, 32);
-const jupiterMat = new THREE.MeshStandardMaterial({ color: 0xb07f35, roughness: 0.6 });
-const jupiterMesh = new THREE.Mesh(jupiterGeo, jupiterMat);
-scene.add(jupiterMesh);
-
-// 5. Tracé des Orbites
+// 5. Configuration des Planètes
+const SCALE_AU = 16; // Échelle visuelle pour les distances UA
 const segments = 128;
 
-function createOrbit(radius, color, opacity = 0.4) {
+const planetData = [
+  { id: 'mercury', name: 'Mercury', radius: 0.5, color: 0x888888, distAU: 0.39 },
+  { id: 'venus',   name: 'Venus',   radius: 0.9, color: 0xe3bb76, distAU: 0.72 },
+  { id: 'earth',   name: 'Earth',   radius: 1.0, color: 0x2233ff, distAU: 1.00 },
+  { id: 'mars',    name: 'Mars',    radius: 0.7, color: 0xc1440e, distAU: 1.52 },
+  { id: 'jupiter', name: 'Jupiter', radius: 2.2, color: 0xb07f35, distAU: 2.80 }, // Distances compressées pour l'ergonomie visuelle
+  { id: 'saturn',  name: 'Saturn',  radius: 1.8, color: 0xd2b48c, distAU: 4.20 },
+  { id: 'uranus',  name: 'Uranus',  radius: 1.4, color: 0x7df9ff, distAU: 5.60 },
+  { id: 'neptune', name: 'Neptune', radius: 1.4, color: 0x4b70dd, distAU: 7.00 }
+];
+
+const planets = {};
+
+// Helper pour créer les orbites
+function createOrbitLine(radius, color) {
   const geo = new THREE.BufferGeometry();
   const pos = [];
   for (let i = 0; i <= segments; i++) {
@@ -94,51 +79,66 @@ function createOrbit(radius, color, opacity = 0.4) {
     pos.push(Math.cos(theta) * radius, 0, Math.sin(theta) * radius);
   }
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  const mat = new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: opacity });
+  const mat = new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.25 });
   return new THREE.Line(geo, mat);
 }
 
-// Rayons visuels des orbites (échelle visuelle 1 UA = 15 unités 3D)
-const SCALE_AU = 15;
+// Initialisation des planètes et orbites
+planetData.forEach(data => {
+  const geo = new THREE.SphereGeometry(data.radius, 32, 32);
+  const mat = new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.6 });
+  const mesh = new THREE.Mesh(geo, mat);
+  scene.add(mesh);
 
-const venusOrbit = createOrbit(0.72 * SCALE_AU, 0xe3bb76);
-const earthOrbit = createOrbit(1.0 * SCALE_AU, 0x4da6ff);
-const marsOrbit = createOrbit(1.52 * SCALE_AU, 0xc1440e);
-const jupiterOrbit = createOrbit(2.8 * SCALE_AU, 0xb07f35); // Échelle ajustée pour lisibilité
+  const orbit = createOrbitLine(data.distAU * SCALE_AU, data.color);
+  scene.add(orbit);
 
-scene.add(venusOrbit);
-scene.add(earthOrbit);
-scene.add(marsOrbit);
-scene.add(jupiterOrbit);
+  planets[data.id] = {
+    astronomyName: data.name,
+    mesh: mesh,
+    distAU: data.distAU
+  };
+});
 
-// Orbite Lune (relative à la Terre)
-const moonOrbit = createOrbit(2.5, 0xffffff, 0.3);
+// Anneaux de Saturne
+const ringGeo = new THREE.RingGeometry(2.3, 3.6, 32);
+const ringMat = new THREE.MeshBasicMaterial({ color: 0xead6b8, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+ringMesh.rotation.x = Math.PI / 2;
+planets.saturn.mesh.add(ringMesh);
+
+// Lune
+const moonGeo = new THREE.SphereGeometry(0.3, 32, 32);
+const moonMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.8 });
+const moonMesh = new THREE.Mesh(moonGeo, moonMat);
+scene.add(moonMesh);
+
+const moonOrbit = createOrbitLine(2.2, 0xffffff);
 scene.add(moonOrbit);
 
-// 6. Positions Astronomiques Temps Réel
+// 6. Mise à jour des positions astronomiques
 function updatePositions() {
   const now = new Date();
+  
   const timeDisplay = document.getElementById('time-display');
   if (timeDisplay) timeDisplay.innerText = now.toUTCString();
 
-  // Vecteurs héliocentriques depuis Astronomy Engine
-  const venusVec = Astronomy.HelioVector('Venus', now);
-  const earthVec = Astronomy.HelioVector('Earth', now);
-  const marsVec = Astronomy.HelioVector('Mars', now);
-  const jupiterVec = Astronomy.HelioVector('Jupiter', now);
+  // Position des planètes
+  Object.keys(planets).forEach(id => {
+    const p = planets[id];
+    const vec = Astronomy.HelioVector(p.astronomyName, now);
+    p.mesh.position.set(
+      vec.x * SCALE_AU,
+      vec.z * SCALE_AU,
+      vec.y * SCALE_AU
+    );
+  });
+
+  // Position de la Lune relative à la Terre
+  const earthMesh = planets.earth.mesh;
   const moonVec = Astronomy.GeoVector('Moon', now, true);
+  const scaleMoon = 0.000008;
 
-  // Positionnement dans la scène 3D (X, Z, Y pour repère 3D)
-  venusMesh.position.set(venusVec.x * SCALE_AU, venusVec.z * SCALE_AU, venusVec.y * SCALE_AU);
-  earthMesh.position.set(earthVec.x * SCALE_AU, earthVec.z * SCALE_AU, earthVec.y * SCALE_AU);
-  marsMesh.position.set(marsVec.x * SCALE_AU, marsVec.z * SCALE_AU, marsVec.y * SCALE_AU);
-  
-  // Échelle compressée pour Jupiter afin de la garder visible à l'écran
-  const jupiterScale = SCALE_AU * 0.54; 
-  jupiterMesh.position.set(jupiterVec.x * jupiterScale, jupiterVec.z * jupiterScale, jupiterVec.y * jupiterScale);
-
-  // Lune
-  const scaleMoon = 0.00001;
   moonMesh.position.set(
     earthMesh.position.x + (moonVec.x * scaleMoon),
     earthMesh.position.y + (moonVec.z * scaleMoon),
@@ -147,12 +147,13 @@ function updatePositions() {
 
   moonOrbit.position.copy(earthMesh.position);
 
+  // Phase Lunaire
   const phase = Astronomy.MoonPhase(now);
   const moonPhaseDisplay = document.getElementById('moon-phase');
   if (moonPhaseDisplay) moonPhaseDisplay.innerText = `${Math.round(phase)}°`;
 }
 
-// 7. Déclaration de la fonction de mise à jour des Étiquettes 2D
+// 7. Projection des étiquettes HTML 2D
 function updateLabelPosition(mesh, labelId) {
   const label = document.getElementById(labelId);
   if (!label) return;
@@ -173,26 +174,29 @@ function updateLabelPosition(mesh, labelId) {
   }
 }
 
-// 8. Boucle d'Animation (60 FPS)
+function updateAllLabels() {
+  updateLabelPosition(sunMesh, 'label-sun');
+  updateLabelPosition(moonMesh, 'label-moon');
+
+  Object.keys(planets).forEach(id => {
+    updateLabelPosition(planets[id].mesh, `label-${id}`);
+  });
+}
+
+// 8. Boucle d'animation principale
 function animate() {
   requestAnimationFrame(animate);
-  
+
   updatePositions();
 
   if (controls) controls.update();
-  
-  // Mise à jour de toutes les étiquettes
-  updateLabelPosition(sunMesh, 'label-sun');
-  updateLabelPosition(venusMesh, 'label-venus');
-  updateLabelPosition(earthMesh, 'label-earth');
-  updateLabelPosition(moonMesh, 'label-moon');
-  updateLabelPosition(marsMesh, 'label-mars');
-  updateLabelPosition(jupiterMesh, 'label-jupiter');
-  
+
+  updateAllLabels();
+
   renderer.render(scene, camera);
 }
 
-// 9. Gestion du Redimensionnement
+// 9. Redimensionnement dynamique
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
