@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Système Solaire Photoréaliste & GPS</title>
+    <title>Système Solaire & Carte GPS</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -37,7 +37,7 @@
             z-index: 2;
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.4s ease;
+            transition: opacity 0.3s ease;
         }
         #map-container.active {
             opacity: 1;
@@ -128,7 +128,7 @@
 
     <div class="controls-bar">
         <button id="focus-earth-btn" class="btn-ui">Zoomer sur la Terre</button>
-        <button id="gyro-btn" class="btn-ui">Gyroscope</button>
+        <button id="toggle-map-btn" class="btn-ui">Basculer Carte 2D</button>
     </div>
 
     <script>
@@ -139,7 +139,7 @@
         setInterval(updateUTC, 1000);
         updateUTC();
 
-        // 2. THREE.JS SCÈNE
+        // 2. INITIALISATION THREE.JS
         const container = document.getElementById('canvas-container');
         const labelsContainer = document.getElementById('labels-container');
         const mapContainer = document.getElementById('map-container');
@@ -156,15 +156,16 @@
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
+        controls.minDistance = 1.2;
+        controls.maxDistance = 500;
 
-        // Lumière
         const sunLight = new THREE.PointLight(0xffffff, 2.0, 2000);
         scene.add(sunLight);
         scene.add(new THREE.AmbientLight(0x333333));
 
         const textureLoader = new THREE.TextureLoader();
 
-        // 3. ENSEMBLE COMPLET DES ASTRES (8 PLANÈTES + LUNE + PLUTON)
+        // 3. PLANÈTES ET ASTRES
         const planetsData = [
             { name: "Soleil", texture: "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/lava/lavatile.jpg", size: 3.5, dist: 0, period: 1 },
             { name: "Mercure", texture: "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/mercury.jpg", size: 0.5, dist: 7, period: 87.97 },
@@ -181,23 +182,18 @@
 
         const planets = [];
         let earthMesh = null;
-        let userLocationMarker = null;
         let userCoords = { lat: 18.07, lon: -15.95 }; // Coordonnées par défaut
 
         planetsData.forEach(data => {
             const geometry = new THREE.SphereGeometry(data.size, 32, 32);
             const mapTexture = textureLoader.load(data.texture);
             
-            let material;
-            if (data.name === "Soleil") {
-                material = new THREE.MeshBasicMaterial({ map: mapTexture });
-            } else {
-                material = new THREE.MeshStandardMaterial({ map: mapTexture, roughness: 0.6 });
-            }
+            const material = (data.name === "Soleil") 
+                ? new THREE.MeshBasicMaterial({ map: mapTexture }) 
+                : new THREE.MeshStandardMaterial({ map: mapTexture, roughness: 0.6 });
 
             const mesh = new THREE.Mesh(geometry, material);
 
-            // Création de l'anneau de Saturne
             if (data.ring) {
                 const ringGeo = new THREE.RingGeometry(data.size * 1.3, data.size * 2.1, 32);
                 const ringMat = new THREE.MeshBasicMaterial({ color: 0xa6a6a6, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
@@ -206,22 +202,7 @@
                 mesh.add(ringMesh);
             }
 
-            if (data.name === "Terre") {
-                earthMesh = mesh;
-            }
-
-            // Orbite
-            if (data.dist > 0 && !data.parent) {
-                const orbitGeo = new THREE.BufferGeometry();
-                const points = [];
-                for (let i = 0; i <= 128; i++) {
-                    const theta = (i / 128) * Math.PI * 2;
-                    points.push(new THREE.Vector3(Math.cos(theta) * data.dist, 0, Math.sin(theta) * data.dist));
-                }
-                orbitGeo.setFromPoints(points);
-                const orbitMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.12 });
-                scene.add(new THREE.Line(orbitGeo, orbitMat));
-            }
+            if (data.name === "Terre") earthMesh = mesh;
 
             const label = document.createElement('div');
             label.className = 'planet-label';
@@ -232,56 +213,76 @@
             planets.push({ ...data, mesh, label });
         });
 
-        // 4. MAP LEAFLET
-        const leafletMap = L.map('map-container', { zoomControl: false }).setView([userCoords.lat, userCoords.lon], 3);
+        // 4. LEAFLET MAP (CARTE 2D RÉELLE)
+        const leafletMap = L.map('map-container', { zoomControl: true }).setView([userCoords.lat, userCoords.lon], 4);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '© OpenStreetMap'
         }).addTo(leafletMap);
         let leafletMarker = L.marker([userCoords.lat, userCoords.lon]).addTo(leafletMap);
 
-        // 5. GÉOLOCALISATION ET POINTEUR 3D
+        // 5. GÉOLOCALISATION ET REPERE 3D
         function latLonToVector3(lat, lon, radius) {
             const phi = (90 - lat) * (Math.PI / 180);
             const theta = (lon + 180) * (Math.PI / 180);
-            const x = -(radius * Math.sin(phi) * Math.cos(theta));
-            const z = (radius * Math.sin(phi) * Math.sin(theta));
-            const y = (radius * Math.cos(phi));
-            return new THREE.Vector3(x, y, z);
+            return new THREE.Vector3(
+                -(radius * Math.sin(phi) * Math.cos(theta)),
+                (radius * Math.cos(phi)),
+                (radius * Math.sin(phi) * Math.sin(theta))
+            );
+        }
+
+        function setLocation(lat, lon, labelText) {
+            userCoords = { lat, lon };
+            document.getElementById('gps-status').textContent = `${labelText} (${lat.toFixed(2)}°, ${lon.toFixed(2)}°)`;
+
+            const markerGeo = new THREE.SphereGeometry(0.03, 16, 16);
+            const markerMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const userMarker3D = new THREE.Mesh(markerGeo, markerMat);
+            userMarker3D.position.copy(latLonToVector3(lat, lon, 1.01));
+            earthMesh.add(userMarker3D);
+
+            leafletMap.setView([lat, lon], 12);
+            leafletMarker.setLatLng([lat, lon]);
         }
 
         if ("geolocation" in navigator) {
-            navigator.geolocation.getCurrentPosition(position => {
-                userCoords.lat = position.coords.latitude;
-                userCoords.lon = position.coords.longitude;
-                document.getElementById('gps-status').textContent = `${userCoords.lat.toFixed(2)}°, ${userCoords.lon.toFixed(2)}°`;
-
-                const markerGeo = new THREE.SphereGeometry(0.04, 16, 16);
-                const markerMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-                userLocationMarker = new THREE.Mesh(markerGeo, markerMat);
-                
-                const pos = latLonToVector3(userCoords.lat, userCoords.lon, 1.01);
-                userLocationMarker.position.copy(pos);
-                earthMesh.add(userLocationMarker);
-
-                leafletMap.setView([userCoords.lat, userCoords.lon], 13);
-                leafletMarker.setLatLng([userCoords.lat, userCoords.lon]);
-            }, () => {
-                document.getElementById('gps-status').textContent = "Accès refusé / Non disponible";
-            });
+            navigator.geolocation.getCurrentPosition(
+                pos => setLocation(pos.coords.latitude, pos.coords.longitude, "Position GPS"),
+                () => setLocation(userCoords.lat, userCoords.lon, "Position par défaut (GPS désactivé)")
+            );
+        } else {
+            setLocation(userCoords.lat, userCoords.lon, "GPS non supporté");
         }
 
-        // 6. ANIMATION & GESTION DU ZOOM
+        // 6. GESTION DU BASCULEMENT DE LA CARTE 2D
         let isMapVisible = false;
 
-        function updatePositions() {
-            const refDate = new Date(Date.UTC(2026, 0, 1, 0, 0, 0)).getTime();
-            const daysPassed = (Date.now() - refDate) / (1000 * 60 * 60 * 24);
+        function showMap(show) {
+            isMapVisible = show;
+            if (show) {
+                mapContainer.classList.add('active');
+                setTimeout(() => leafletMap.invalidateSize(), 200);
+            } else {
+                mapContainer.classList.remove('active');
+            }
+        }
+
+        document.getElementById('toggle-map-btn').addEventListener('click', () => {
+            showMap(!isMapVisible);
+        });
+
+        // 7. BOUCLE D'ANIMATION
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Mouvement des planètes
+            const days = Date.now() / 100000;
             const terreObj = planets.find(p => p.name === "Terre");
 
             planets.forEach(p => {
                 if (p.dist > 0) {
-                    const angle = (daysPassed / p.period) * Math.PI * 2;
+                    const angle = (days / p.period) * Math.PI * 2;
                     if (p.parent === "Terre" && terreObj) {
                         p.mesh.position.x = terreObj.mesh.position.x + Math.cos(angle) * p.dist;
                         p.mesh.position.z = terreObj.mesh.position.z + Math.sin(angle) * p.dist;
@@ -291,9 +292,10 @@
                     }
                 }
             });
-        }
 
-        function updateLabelsAndTransitions() {
+            if (earthMesh) earthMesh.rotation.y += 0.001;
+
+            // Mise à jour des étiquettes texte
             const tempV = new THREE.Vector3();
             planets.forEach(p => {
                 p.mesh.getWorldPosition(tempV);
@@ -301,7 +303,7 @@
                 const x = (tempV.x * 0.5 + 0.5) * window.innerWidth;
                 const y = (tempV.y * -0.5 + 0.5) * window.innerHeight;
 
-                if (tempV.z > 1 || x < -20 || x > window.innerWidth + 20 || y < -20 || y > window.innerHeight + 20 || isMapVisible) {
+                if (tempV.z > 1 || x < 0 || x > window.innerWidth || y < 0 || y > window.innerHeight || isMapVisible) {
                     p.label.style.opacity = '0';
                 } else {
                     p.label.style.opacity = '1';
@@ -310,57 +312,27 @@
                 }
             });
 
-            // Transition de zoom propre vers Leaflet
+            // Bascule automatique de la carte 2D si la caméra est très proche de la Terre
             if (earthMesh) {
                 const distToEarth = camera.position.distanceTo(earthMesh.position);
-                if (distToEarth < 2.2 && !isMapVisible) {
-                    isMapVisible = true;
-                    mapContainer.classList.add('active');
-                    setTimeout(() => leafletMap.invalidateSize(), 100);
-                } else if (distToEarth >= 2.2 && isMapVisible) {
-                    isMapVisible = false;
-                    mapContainer.classList.remove('active');
+                if (distToEarth < 2.0 && !isMapVisible) {
+                    showMap(true);
+                } else if (distToEarth >= 2.5 && isMapVisible) {
+                    showMap(false);
                 }
             }
-        }
 
-        function animate() {
-            requestAnimationFrame(animate);
-            updatePositions();
-            if (earthMesh) earthMesh.rotation.y += 0.002;
             controls.update();
-            updateLabelsAndTransitions();
             renderer.render(scene, camera);
         }
         animate();
 
-        // 7. BOUTONS INTERACTIFS
+        // 8. BOUTONS
         document.getElementById('focus-earth-btn').addEventListener('click', () => {
             if (!earthMesh) return;
+            showMap(false);
             controls.target.copy(earthMesh.position);
-            camera.position.set(
-                earthMesh.position.x + 1.5,
-                earthMesh.position.y + 0.6,
-                earthMesh.position.z + 1.5
-            );
-        });
-
-        const gyroBtn = document.getElementById('gyro-btn');
-        let gyroActive = false;
-
-        function handleOrientation(event) {
-            if (!gyroActive) return;
-            const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
-            const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
-            camera.rotation.x = beta * 0.05;
-            camera.rotation.y = alpha * 0.05;
-        }
-
-        gyroBtn.addEventListener('click', () => {
-            gyroActive = !gyroActive;
-            gyroBtn.classList.toggle('active', gyroActive);
-            if (gyroActive) window.addEventListener('deviceorientation', handleOrientation);
-            else window.removeEventListener('deviceorientation', handleOrientation);
+            camera.position.set(earthMesh.position.x + 2, earthMesh.position.y + 1, earthMesh.position.z + 2);
         });
 
         window.addEventListener('resize', () => {
