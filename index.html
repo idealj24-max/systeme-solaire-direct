@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Système Solaire Direct</title>
+    <title>Système Solaire Photoréaliste & Géolocalisé</title>
+    
+    <!-- Leaflet CSS & JS pour la carte interactive 2D lors du zoom -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <style>
         * {
             box-sizing: border-box;
@@ -19,7 +24,27 @@
         #canvas-container {
             width: 100vw;
             height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
         }
+        #map-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 2;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease-in-out;
+        }
+        #map-container.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
         .info-panel {
             position: absolute;
             top: 12px;
@@ -47,7 +72,6 @@
             line-height: 1.4;
         }
 
-        /* Style des étiquettes toujours visibles */
         .planet-label {
             position: absolute;
             background: rgba(15, 15, 25, 0.8);
@@ -70,19 +94,21 @@
             left: 50%;
             transform: translateX(-50%);
             z-index: 10;
+            display: flex;
+            gap: 10px;
         }
-        .btn-gyro {
+        .btn-ui {
             background: #3b82f6;
             color: #fff;
             border: none;
-            padding: 12px 24px;
+            padding: 10px 18px;
             border-radius: 10px;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 600;
             cursor: pointer;
             box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
         }
-        .btn-gyro.active {
+        .btn-ui.active {
             background: #ef4444;
             box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
         }
@@ -94,23 +120,24 @@
 <body>
 
     <div class="info-panel">
-        <div class="info-title">🪐 Système-Solaire-Direct</div>
+        <div class="info-title">🪐 Système Solaire HD & GPS</div>
         <div class="info-text"><b>Temps UTC :</b> <span id="utc-time">--</span></div>
-        <div class="info-text"><b>Mode :</b> Positions orbitales en temps réel</div>
+        <div class="info-text"><b>GPS :</b> <span id="gps-status">Recherche...</span></div>
     </div>
 
     <div id="labels-container"></div>
     <div id="canvas-container"></div>
+    <div id="map-container"></div>
 
     <div class="controls-bar">
-        <button id="gyro-btn" class="btn-gyro">Activer le Gyroscope</button>
+        <button id="focus-earth-btn" class="btn-ui">Zoomer sur la Terre</button>
+        <button id="gyro-btn" class="btn-ui">Gyroscope</button>
     </div>
 
     <script>
         // --- 1. HORLOGE UTC ---
         function updateUTC() {
-            const now = new Date();
-            document.getElementById('utc-time').textContent = now.toUTCString();
+            document.getElementById('utc-time').textContent = new Date().toUTCString();
         }
         setInterval(updateUTC, 1000);
         updateUTC();
@@ -118,12 +145,13 @@
         // --- 2. THREE.JS INITIALISATION ---
         const container = document.getElementById('canvas-container');
         const labelsContainer = document.getElementById('labels-container');
+        const mapContainer = document.getElementById('map-container');
 
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
         camera.position.set(0, 50, 85);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         container.appendChild(renderer.domElement);
@@ -132,36 +160,48 @@
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
 
-        // Lumière du Soleil
-        const sunLight = new THREE.PointLight(0xffffff, 2.2, 500);
+        // Éclairage spatial réaliste
+        const sunLight = new THREE.PointLight(0xffffff, 2.0, 1000);
         scene.add(sunLight);
-        scene.add(new THREE.AmbientLight(0x404040));
+        scene.add(new THREE.AmbientLight(0x333333));
 
-        // --- 3. PARAMÈTRES DES ASTRES (Périodes de révolution réelles en jours terrestres) ---
+        // Chargeur de textures HD
+        const textureLoader = new THREE.TextureLoader();
+
+        // --- 3. ASTRES AVEC TEXTURES RÉELLES ---
         const planetsData = [
-            { name: "Soleil", color: 0xffcc00, size: 3.5, dist: 0, period: 1 },
-            { name: "Mercure", color: 0xaaaaaa, size: 0.5, dist: 7, period: 87.97 },
-            { name: "Vénus", color: 0xe3bb76, size: 0.8, dist: 10, period: 224.7 },
-            { name: "Terre", color: 0x2b82c5, size: 0.9, dist: 14, period: 365.25 },
-            { name: "Lune", color: 0xcccccc, size: 0.25, dist: 2.0, period: 27.3, parent: "Terre" },
-            { name: "Mars", color: 0xc1440e, size: 0.7, dist: 19, period: 686.98 },
-            { name: "Jupiter", color: 0xb07f35, size: 2.2, dist: 27, period: 4332.59 },
-            { name: "Saturne", color: 0xe2bf7d, size: 1.8, dist: 36, period: 10759.22, ring: true },
-            { name: "Uranus", color: 0x4b70dd, size: 1.2, dist: 45, period: 30685.4 },
-            { name: "Neptune", color: 0x274687, size: 1.1, dist: 53, period: 60189.0 }
+            { name: "Soleil", texture: "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/lava/lavatile.jpg", size: 3.5, dist: 0, period: 1 },
+            { name: "Mercure", texture: "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/mercury.jpg", size: 0.5, dist: 7, period: 87.97 },
+            { name: "Vénus", texture: "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/venus_atmosphere.jpg", size: 0.8, dist: 10, period: 224.7 },
+            { name: "Terre", texture: "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg", size: 1.0, dist: 14, period: 365.25 },
+            { name: "Lune", texture: "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/moon_1024.jpg", size: 0.25, dist: 2.0, period: 27.3, parent: "Terre" },
+            { name: "Mars", texture: "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/mars.jpg", size: 0.7, dist: 19, period: 686.98 },
+            { name: "Jupiter", texture: "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/jupiter.jpg", size: 2.2, dist: 27, period: 4332.59 }
         ];
 
         const planets = [];
+        let earthMesh = null;
+        let userLocationMarker = null;
+        let userCoords = { lat: 0, lon: 0 };
 
         planetsData.forEach(data => {
-            const geometry = new THREE.SphereGeometry(data.size, 32, 32);
-            let material = (data.name === "Soleil") 
-                ? new THREE.MeshBasicMaterial({ color: data.color })
-                : new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.7 });
+            const geometry = new THREE.SphereGeometry(data.size, 64, 64);
+            const mapTexture = textureLoader.load(data.texture);
+            
+            let material;
+            if (data.name === "Soleil") {
+                material = new THREE.MeshBasicMaterial({ map: mapTexture });
+            } else {
+                material = new THREE.MeshStandardMaterial({ map: mapTexture, roughness: 0.6 });
+            }
 
             const mesh = new THREE.Mesh(geometry, material);
 
-            // Dessin de l'orbite
+            if (data.name === "Terre") {
+                earthMesh = mesh;
+            }
+
+            // Représentation de l'orbite
             if (data.dist > 0 && !data.parent) {
                 const orbitGeo = new THREE.BufferGeometry();
                 const points = [];
@@ -170,48 +210,71 @@
                     points.push(new THREE.Vector3(Math.cos(theta) * data.dist, 0, Math.sin(theta) * data.dist));
                 }
                 orbitGeo.setFromPoints(points);
-                const orbitMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.12 });
+                const orbitMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 });
                 scene.add(new THREE.Line(orbitGeo, orbitMat));
             }
 
-            // Anneaux de Saturne
-            if (data.ring) {
-                const ringGeo = new THREE.RingGeometry(data.size + 0.4, data.size + 1.6, 32);
-                const ringMat = new THREE.MeshBasicMaterial({ color: 0xa68c6d, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
-                const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-                ringMesh.rotation.x = Math.PI / 2;
-                mesh.add(ringMesh);
-            }
-
-            // Création de l'étiquette HTML
             const label = document.createElement('div');
             label.className = 'planet-label';
             label.textContent = data.name;
             labelsContainer.appendChild(label);
 
             scene.add(mesh);
-
-            planets.push({
-                ...data,
-                mesh: mesh,
-                label: label
-            });
+            planets.push({ ...data, mesh, label });
         });
 
-        // --- 4. CALCUL TEMPS RÉEL DE POSITIONMENT ---
-        function updatePositions() {
-            // Epoch de référence : 1er Janvier 2026 à 00:00:00 UTC
-            const refDate = new Date(Date.UTC(2026, 0, 1, 0, 0, 0)).getTime();
-            const now = Date.now();
-            const daysPassed = (now - refDate) / (1000 * 60 * 60 * 24);
+        // --- 4. CARTE LEAFLET (ZOOM ULTRA-PRÈS) ---
+        const leafletMap = L.map('map-container').setView([0, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(leafletMap);
+        let leafletMarker = null;
 
+        // --- 5. GÉOLOCALISATION ET MARQUEUR 3D ---
+        function latLonToVector3(lat, lon, radius) {
+            const phi = (90 - lat) * (Math.PI / 180);
+            const theta = (lon + 180) * (Math.PI / 180);
+            const x = -(radius * Math.sin(phi) * Math.cos(theta));
+            const z = (radius * Math.sin(phi) * Math.sin(theta));
+            const y = (radius * Math.cos(phi));
+            return new THREE.Vector3(x, y, z);
+        }
+
+        if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition(position => {
+                userCoords.lat = position.coords.latitude;
+                userCoords.lon = position.coords.longitude;
+                document.getElementById('gps-status').textContent = `${userCoords.lat.toFixed(2)}°, ${userCoords.lon.toFixed(2)}°`;
+
+                // Placer le point rouge sur le globe 3D
+                const markerGeo = new THREE.SphereGeometry(0.04, 16, 16);
+                const markerMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                userLocationMarker = new THREE.Mesh(markerGeo, markerMat);
+                
+                const pos = latLonToVector3(userCoords.lat, userCoords.lon, 1.01);
+                userLocationMarker.position.copy(pos);
+                earthMesh.add(userLocationMarker);
+
+                // Configurer la carte 2D
+                leafletMap.setView([userCoords.lat, userCoords.lon], 15);
+                leafletMarker = L.marker([userCoords.lat, userCoords.lon]).addTo(leafletMap)
+                    .bindPopup('Votre position exacte').openPopup();
+
+            }, () => {
+                document.getElementById('gps-status').textContent = "Accès refusé / Non disponible";
+            });
+        }
+
+        // --- 6. CALCULS ET ANIMATION ---
+        function updatePositions() {
+            const refDate = new Date(Date.UTC(2026, 0, 1, 0, 0, 0)).getTime();
+            const daysPassed = (Date.now() - refDate) / (1000 * 60 * 60 * 24);
             const terreObj = planets.find(p => p.name === "Terre");
 
             planets.forEach(p => {
                 if (p.dist > 0) {
-                    // Position orbitale calculée selon le nombre de jours écoulés en temps réel
                     const angle = (daysPassed / p.period) * Math.PI * 2;
-
                     if (p.parent === "Terre" && terreObj) {
                         p.mesh.position.x = terreObj.mesh.position.x + Math.cos(angle) * p.dist;
                         p.mesh.position.z = terreObj.mesh.position.z + Math.sin(angle) * p.dist;
@@ -223,18 +286,14 @@
             });
         }
 
-        // --- 5. SUIVI FLUIDE DES ÉTIQUETTES (SANS DISPARITION INTEMPESTIVE) ---
-        function updateLabels() {
+        function updateLabelsAndTransitions() {
             const tempV = new THREE.Vector3();
-
             planets.forEach(p => {
                 p.mesh.getWorldPosition(tempV);
                 tempV.project(camera);
-
                 const x = (tempV.x * 0.5 + 0.5) * window.innerWidth;
                 const y = (tempV.y * -0.5 + 0.5) * window.innerHeight;
 
-                // Masquer seulement si l'astre est hors écran (en dehors du viewport canvas)
                 if (tempV.z > 1 || x < -20 || x > window.innerWidth + 20 || y < -20 || y > window.innerHeight + 20) {
                     p.label.style.opacity = '0';
                 } else {
@@ -243,24 +302,44 @@
                     p.label.style.top = `${y}px`;
                 }
             });
+
+            // Gérer la transition progressive vers la vraie carte OSM
+            if (earthMesh) {
+                const distToEarth = camera.position.distanceTo(earthMesh.position);
+                if (distToEarth < 1.8) {
+                    mapContainer.classList.add('active');
+                    leafletMap.invalidateSize();
+                } else {
+                    mapContainer.classList.remove('active');
+                }
+            }
         }
 
-        // --- 6. BOUCLE D'ANIMATION ---
         function animate() {
             requestAnimationFrame(animate);
-
             updatePositions();
-
-            // Rotation propre des astres sur eux-mêmes
-            planets.forEach(p => p.mesh.rotation.y += 0.003);
+            
+            // Auto-rotation de la Terre
+            if (earthMesh) earthMesh.rotation.y += 0.002;
 
             controls.update();
-            updateLabels();
+            updateLabelsAndTransitions();
             renderer.render(scene, camera);
         }
         animate();
 
-        // --- 7. GYROSCOPE ---
+        // --- 7. BOUTON ZOOM AUTOMATIQUE ---
+        document.getElementById('focus-earth-btn').addEventListener('click', () => {
+            if (!earthMesh) return;
+            controls.target.copy(earthMesh.position);
+            camera.position.set(
+                earthMesh.position.x + 1.2,
+                earthMesh.position.y + 0.5,
+                earthMesh.position.z + 1.2
+            );
+        });
+
+        // Gyroscope
         const gyroBtn = document.getElementById('gyro-btn');
         let gyroActive = false;
 
@@ -268,34 +347,16 @@
             if (!gyroActive) return;
             const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
             const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
-            camera.rotation.x = beta * 0.1;
-            camera.rotation.y = alpha * 0.1;
+            camera.rotation.x = beta * 0.05;
+            camera.rotation.y = alpha * 0.05;
         }
 
         gyroBtn.addEventListener('click', () => {
-            if (!gyroActive) {
-                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    DeviceOrientationEvent.requestPermission().then(response => {
-                        if (response === 'granted') {
-                            window.addEventListener('deviceorientation', handleOrientation);
-                            setGyroState(true);
-                        }
-                    });
-                } else {
-                    window.addEventListener('deviceorientation', handleOrientation);
-                    setGyroState(true);
-                }
-            } else {
-                window.removeEventListener('deviceorientation', handleOrientation);
-                setGyroState(false);
-            }
+            gyroActive = !gyroActive;
+            gyroBtn.classList.toggle('active', gyroActive);
+            if (gyroActive) window.addEventListener('deviceorientation', handleOrientation);
+            else window.removeEventListener('deviceorientation', handleOrientation);
         });
-
-        function setGyroState(active) {
-            gyroActive = active;
-            gyroBtn.textContent = active ? "Désactiver le Gyroscope" : "Activer le Gyroscope";
-            gyroBtn.classList.toggle('active', active);
-        }
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
